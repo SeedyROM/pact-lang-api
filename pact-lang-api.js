@@ -133,11 +133,14 @@ var pullAndCheckHashs = function(sigs) {
  * @param meta {object} - meta information, see mkMeta
  * @return valid pact API command for send or local use.
  */
-var prepareExecCmd = function(keyPairs, nonce=new Date().toISOString(), pactCode, envData, meta=mkMeta("","",0,0,0,28800)) {
+var prepareExecCmd = function(keyPairs, caps=[], nonce=new Date().toISOString(), pactCode, envData, meta=mkMeta("","",0,0,0,28800)) {
   enforceType(nonce, "string", "nonce");
   enforceType(pactCode, "string", "pactCode");
 
-  var kpArray = asArray(keyPairs);
+  var kpArray = asArray(keyPairs).map(kp => {
+    kp.caps = caps;
+    return kp;
+  });
   var signers = kpArray.map(mkSigner);
   var cmdJSON = {
     nonce: nonce,
@@ -188,9 +191,8 @@ var mkPublicSend = function(cmds) {
  */
 var mkSigner = function(kp) {
   return {
-    pubKey: kp.publicKey,
-    addr: kp.publicKey,
-    scheme: "ED25519"
+    clist: kp.caps,
+    pubKey: kp.publicKey
   };
 };
 
@@ -339,8 +341,8 @@ var mkMeta = function(sender, chainId, gasPrice, gasLimit, creationTime, ttl) {
 };
 
 /**
- * Formats ExecCmd into api request object
- */
+ Formats ExecCmd into api request object
+**/
 var mkReq = function(cmd) {
   return {
     headers: {
@@ -350,6 +352,17 @@ var mkReq = function(cmd) {
     body: JSON.stringify(cmd)
   };
 };
+
+/**
+ Formats into Capability List
+**/
+const mkCap = function(name, description, code){
+  return {
+     name: name,
+     description: description,
+     cap: JSON.stringify(code)
+   }
+}
 
 /**
  * A Command Object to Execute in Pact Server.
@@ -369,7 +382,7 @@ var mkReq = function(cmd) {
  */
 const fetchSend = async function(sendCmd, apiHost){
   if (!apiHost)  throw new Error(`Pact.fetch.send(): No apiHost provided`);
-  const sendCmds = asArray(sendCmd).map(cmd => prepareExecCmd(cmd.keyPairs, cmd.nonce, cmd.pactCode, cmd.envData, cmd.meta));
+  const sendCmds = asArray(sendCmd).map(cmd => prepareExecCmd(cmd.keyPairs, cmd.caps, cmd.nonce, cmd.pactCode, cmd.envData, cmd.meta));
   const txRes = await fetch(`${apiHost}/api/v1/send`, mkReq(mkPublicSend(sendCmds)));
   const tx = await txRes.json();
   return tx;
@@ -418,26 +431,36 @@ const fetchListen = async function(listenCmd, apiHost) {
   return resJSON.result;
 };
 
+
+/**
+*signing cmd
+* @param pactCode {string} - pact code to execute
+* @param capability {[object]} - pact cap to be signed with fields - name, description, cap
+* @param envData {object} - JSON message data for command
+* @param sender {string} - sender field in meta
+* @param chainId {string} - chain Id field in meta
+* @param gasLimit {number} - gas Limit field in meta
+* @param nonce {string} - nonce value for ensuring unique hash
+**/
+
 /**
  * Sends Pact command parameters to local wallet and retrieve the signedCommand.
- * @param pactCode {string} - pact code to execute
- * @param envData {object} - JSON message data for command
- * @param sender {string} - sender field in meta
- * @param chainId {string} - chain Id field in meta
- * @param gasLimit {number} - gas Limit field in meta
- * @param nonce {string} - nonce value for ensuring unique hash
+ * @param signingCmd
  * @return {object} Signed Pact Command
  */
 
-const signWallet = async function (pactCode, envData, sender, chainId, gasLimit, nonce){
-  if (!pactCode)  throw new Error(`Pact.wallet.sign(): No Pact Code provided`);
+const signWallet = async function (signingCmd){
+  if (!pactCode) throw new Error(`Pact.wallet.sign(): No Pact Code provided`);
   const cmd = {
-    code: pactCode,
-    data: envData,
-    sender: sender,
-    chainId: chainId,
-    gasLimit: gasLimit,
-    nonce: nonce
+    code: signingCmd.pactCode,
+    data: signingCmd.envData,
+    caps: [
+      asArray(signingCmd.capability)
+    ],
+    sender: signingCmd.sender,
+    chainId: signingCmd.chainId,
+    gasLimit: signingCmd.gasLimit,
+    nonce: signingCmd.nonce
   }
   const res = await fetch('http://127.0.0.1:9467/v1/sign', mkReq(cmd))
   const resJSON = await res.json();
@@ -446,7 +469,7 @@ const signWallet = async function (pactCode, envData, sender, chainId, gasLimit,
 
 /**
  * Sends a signed Pact command to a running Pact server and retrieves tx result.
- * @param {{signedCmd: <rk:string>}} listenCmd reqest key of tx to listen.
+ * @param {{signedCmd: <rk:string>}} cmd signed with keypair.
  * @param {string} apiHost host running Pact server
  * @return {object} Request key of the tx received from pact server.
  */
@@ -476,7 +499,8 @@ module.exports = {
   },
   lang: {
     mkExp: mkExp,
-    mkMeta: mkMeta
+    mkMeta: mkMeta,
+    mkCap: mkCap
   },
   simple: {
     exec: {
