@@ -137,10 +137,6 @@ var prepareExecCmd = function(keyPairs, caps=[], nonce=new Date().toISOString(),
   enforceType(nonce, "string", "nonce");
   enforceType(pactCode, "string", "pactCode");
 
-  var kpArray = asArray(keyPairs).map(kp => {
-    kp.caps = caps;
-    return kp;
-  });
   var signers = kpArray.map(mkSigner);
   var cmdJSON = {
     nonce: nonce,
@@ -370,6 +366,7 @@ const mkCap = function(name, description, code){
  * @property pactCode {string} pact code to execute
  * @property keyPairs {array or object} array or single ED25519 keypair
  * @property nonce {string} nonce value, default at current time
+ * @property cap {object} capability that is signed, see mkCap
  * @property envData {object} JSON message data for command, default at empty obj
  * @property meta {object} meta information, see mkMeta
  */
@@ -397,7 +394,7 @@ const fetchSend = async function(sendCmd, apiHost){
 const fetchLocal = async function(localCmd, apiHost) {
   if (!apiHost)  throw new Error(`Pact.fetch.local(): No apiHost provided`);
   const {keyPairs, nonce, pactCode, envData, meta} = localCmd
-  const cmd = prepareExecCmd(keyPairs, nonce, pactCode, envData, meta);
+  const cmd = prepareExecCmd(keyPairs, [], nonce, pactCode, envData, meta);
   const txRes = await fetch(`${apiHost}/api/v1/local`, mkReq(cmd));
   const tx = await txRes.json();
   return tx.result;
@@ -438,6 +435,7 @@ const fetchListen = async function(listenCmd, apiHost) {
 * @param capability {[object]} - pact cap to be signed with fields - name, description, cap
 * @param envData {object} - JSON message data for command
 * @param sender {string} - sender field in meta
+* @param caps {[<cap:string>]}
 * @param chainId {string} - chain Id field in meta
 * @param gasLimit {number} - gas Limit field in meta
 * @param nonce {string} - nonce value for ensuring unique hash
