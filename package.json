@@ -6,7 +6,8 @@
   "scripts": {
     "start:pact": "rm -Rf ./log && mkdir log && pact --serve server.conf",
     "test": "tape ./test/*.test.js",
-    "build": "browserify pact-lang-api.js -o pact-lang-api.min.js && browserify pact-lang-api-global.js -o pact-lang-api-global.min.js"
+    "build:types": "dts-gen -overwrite --expression-file \"pact-lang-api.js\"",
+    "build": "npm run build:types && browserify pact-lang-api.js -o pact-lang-api.min.js && browserify pact-lang-api-global.js -o pact-lang-api-global.min.js"
   },
   "repository": {
     "type": "git",
@@ -22,5 +23,8 @@
     "node-fetch": "^2.6.0",
     "tape": "^4.11.0",
     "tweetnacl": "^0.14.5"
+  },
+  "devDependencies": {
+    "dts-gen": "^0.5.8"
   }
 }
